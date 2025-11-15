@@ -5,16 +5,27 @@ import dotenv from "dotenv";
 import authRoutes from "./routes/auth.js";
 import pool from "./db.js";
 import productosRoutes from "./routes/productos.js";
+import ventasRouter from "./routes/ventas.js";
+
 
 dotenv.config();
 
 const app = express();
-app.use(cors());
 app.use(bodyParser.json());
+
+// app.use(cors({
+//   origin: "http://localhost:5173",  // tu frontend
+//   credentials: true                // permite cookies
+// }));
+
+app.use(cors({ origin: "*", credentials: true }));
+
 
 //Iniciar rutas
 app.use("/api/auth", authRoutes);
 app.use("/api/productos", productosRoutes);
+app.use("/api/ventas", ventasRouter);
+
 
 app.get("/test-db", async (req, res) => {
   try {
@@ -33,5 +44,10 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor backend en http://localhost:${PORT}`));
+// app.listen(PORT, () => console.log(`Servidor backend en http://localhost:${PORT}`));
+
+app.listen(3000, "0.0.0.0", () => {
+  console.log("Servidor backend escuchando en http://0.0.0.0:3000");
+});
+
 
