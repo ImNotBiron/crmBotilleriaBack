@@ -6,6 +6,8 @@ import authRoutes from "./routes/auth.js";
 import pool from "./db.js";
 import productosRoutes from "./routes/productos.js";
 import ventasRouter from "./routes/ventas.js";
+import usuariosRoutes from "./routes/usuarios.js";
+
 
 import path from "path";
 import { fileURLToPath } from "url";
@@ -66,6 +68,7 @@ app.use((req, res, next) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/productos", productosRoutes);
 app.use("/api/ventas", ventasRouter);
+app.use("/api/usuarios", usuariosRoutes);
 
 app.get("/test-db", async (req, res) => {
   try {
