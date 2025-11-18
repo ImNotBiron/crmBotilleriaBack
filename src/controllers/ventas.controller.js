@@ -1,22 +1,27 @@
-import express from "express";
-import pool from "../db.js";
+import pool from "../config/db.js";
 
-const router = express.Router();
+export const crearVenta = async (req, res, next) => {
+  const {
+    id_usuario,
+    total_general,
+    total_afecto,
+    total_exento,
+    pagos,
+    items,
+  } = req.body;
 
-router.post("/", async (req, res) => {
-  const {id_usuario, total_general, total_afecto, total_exento, pagos, items } = req.body;
+  let conn;
 
-  const conn = await pool.getConnection();
   try {
+    conn = await pool.getConnection();
     await conn.beginTransaction();
 
     // 1) Insertar venta
-   const [ventaRes] = await conn.query(
-  `INSERT INTO ventas (id_usuario, total_general, total_afecto, total_exento, fecha)
-   VALUES (?, ?, ?, ?, NOW())`,
-  [id_usuario, total_general, total_afecto, total_exento]
-);
-
+    const [ventaRes] = await conn.query(
+      `INSERT INTO ventas (id_usuario, total_general, total_afecto, total_exento, fecha)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [id_usuario, total_general, total_afecto, total_exento]
+    );
 
     const idVenta = ventaRes.insertId;
 
@@ -44,7 +49,6 @@ router.post("/", async (req, res) => {
         ]
       );
 
-      // descontar stock
       await conn.query(
         `UPDATE productos SET stock = stock - ? WHERE id = ?`,
         [item.cantidad, item.id_producto]
@@ -54,14 +58,11 @@ router.post("/", async (req, res) => {
     await conn.commit();
 
     res.json({ success: true, id_venta: idVenta });
-
   } catch (error) {
-    await conn.rollback();
+    if (conn) await conn.rollback();
     console.error("Error al registrar venta:", error);
-    res.status(500).json({ error: "Error al registrar venta" });
+    next(error);
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
-});
-
-export default router;
+};
