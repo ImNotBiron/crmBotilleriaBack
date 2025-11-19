@@ -1,3 +1,4 @@
+// src/controllers/auth.controller.js
 import pool from "../config/db.js";
 import jwt from "jsonwebtoken";
 import { limpiarRutFormato } from "../utils/rut.js";
@@ -13,7 +14,17 @@ export const login = async (req, res, next) => {
     const rutLimpio = limpiarRutFormato(rut);
 
     const [rows] = await pool.query(
-      "SELECT * FROM usuarios WHERE REPLACE(REPLACE(rut_usuario, '-', ''), '.', '') = ?",
+      `
+      SELECT 
+        id,
+        nombre_usuario,
+        rut_usuario,
+        tipo_usuario,
+        activo
+      FROM usuarios
+      WHERE REPLACE(REPLACE(rut_usuario, '-', ''), '.', '') = ?
+      LIMIT 1
+      `,
       [rutLimpio]
     );
 
@@ -23,12 +34,18 @@ export const login = async (req, res, next) => {
 
     const user = rows[0];
 
+    if (!user.activo) {
+      return res.status(403).json({ message: "Usuario desactivado." });
+    }
+
+    const payload = {
+      id: user.id,
+      rut: user.rut_usuario,
+      tipo_usuario: user.tipo_usuario,
+    };
+
     const token = jwt.sign(
-      {
-        id: user.id,
-        rut: user.rut_usuario,
-        tipo_usuario: user.tipo_usuario,
-      },
+      payload,
       process.env.JWT_SECRET || "secret123",
       { expiresIn: "2h" }
     );
@@ -37,10 +54,11 @@ export const login = async (req, res, next) => {
       message: "Inicio de sesión exitoso",
       token,
       user: {
-        id_usuario: user.id,
-        rut_usuario: user.rut_usuario,
+        id: user.id,
         nombre_usuario: user.nombre_usuario,
+        rut_usuario: user.rut_usuario,
         tipo_usuario: user.tipo_usuario,
+        activo: user.activo,
       },
     });
   } catch (error) {

@@ -1,22 +1,70 @@
+// src/controllers/productos.controller.js
 import pool from "../config/db.js";
 
-// Listar todos los productos
+// GET /productos
+// Lista productos + info de categoría, envase, unidad y proveedor preferido
 export const getAllProductos = async (req, res, next) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM productos ORDER BY id DESC");
+    const [rows] = await pool.query(
+      `
+      SELECT 
+        p.id,
+        p.codigo_producto,
+        p.nombre_producto,
+        p.precio_producto,
+        p.exento_iva,
+        p.created_at,
+        p.id_categoria,
+        c.nombre AS categoria_nombre,
+        p.id_envase,
+        e.nombre AS envase_nombre,
+        p.capacidad,
+        p.id_unidad_capacidad,
+        um.codigo AS unidad_codigo,
+        um.descripcion AS unidad_descripcion,
+        p.stock,
+        p.stock_minimo,
+        p.id_proveedor_preferido,
+        prov.nombre AS proveedor_preferido_nombre
+      FROM productos p
+      LEFT JOIN categorias c ON p.id_categoria = c.id
+      LEFT JOIN envases e ON p.id_envase = e.id
+      LEFT JOIN unidades_medida um ON p.id_unidad_capacidad = um.id
+      LEFT JOIN proveedores prov ON p.id_proveedor_preferido = prov.id
+      ORDER BY p.id DESC
+      `
+    );
     res.json(rows);
   } catch (error) {
     next(error);
   }
 };
 
-// Obtener producto por código de barras
+// GET /productos/codigo/:codigo
 export const getProductoByCodigo = async (req, res, next) => {
   try {
     const { codigo } = req.params;
 
     const [rows] = await pool.query(
-      "SELECT * FROM productos WHERE codigo_producto = ? LIMIT 1",
+      `
+      SELECT 
+        p.id,
+        p.codigo_producto,
+        p.nombre_producto,
+        p.precio_producto,
+        p.exento_iva,
+        p.created_at,
+        p.id_categoria,
+        p.id_envase,
+        p.capacidad,
+        p.id_unidad_capacidad,
+        p.stock,
+        p.stock_minimo,
+        p.id_proveedor_preferido
+      FROM productos p
+      WHERE p.codigo_producto = ?
+      LIMIT 1
+      `,
       [codigo]
     );
 
@@ -30,13 +78,30 @@ export const getProductoByCodigo = async (req, res, next) => {
   }
 };
 
-// Obtener producto por ID
+// GET /productos/:id
 export const getProductoById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     const [rows] = await pool.query(
-      "SELECT * FROM productos WHERE id = ?",
+      `
+      SELECT 
+        p.id,
+        p.codigo_producto,
+        p.nombre_producto,
+        p.precio_producto,
+        p.exento_iva,
+        p.created_at,
+        p.id_categoria,
+        p.id_envase,
+        p.capacidad,
+        p.id_unidad_capacidad,
+        p.stock,
+        p.stock_minimo,
+        p.id_proveedor_preferido
+      FROM productos p
+      WHERE p.id = ?
+      `,
       [id]
     );
 
@@ -50,28 +115,43 @@ export const getProductoById = async (req, res, next) => {
   }
 };
 
-// Crear nuevo producto
+// POST /productos
 export const createProducto = async (req, res, next) => {
   try {
     const {
       codigo_producto,
       nombre_producto,
       precio_producto,
-      exento_iva,
-      categoria_producto,
-      distribuidora_producto,
+      exento_iva = 0,
+      id_categoria = null,
+      id_envase = null,
+      capacidad = null,
+      id_unidad_capacidad = null,
+      stock = 0,
+      stock_minimo = 0,
+      id_proveedor_preferido = null,
     } = req.body;
 
     await pool.query(
-      `INSERT INTO productos (codigo_producto, nombre_producto, precio_producto, exento_iva, categoria_producto, distribuidora_producto)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `
+      INSERT INTO productos 
+      (codigo_producto, nombre_producto, precio_producto, exento_iva,
+       id_categoria, id_envase, capacidad, id_unidad_capacidad,
+       stock, stock_minimo, id_proveedor_preferido)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
       [
         codigo_producto,
         nombre_producto,
         precio_producto,
         exento_iva,
-        categoria_producto,
-        distribuidora_producto,
+        id_categoria,
+        id_envase,
+        capacidad,
+        id_unidad_capacidad,
+        stock,
+        stock_minimo,
+        id_proveedor_preferido,
       ]
     );
 
@@ -81,7 +161,7 @@ export const createProducto = async (req, res, next) => {
   }
 };
 
-// Actualizar producto
+// PUT /productos/:id
 export const updateProducto = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -90,21 +170,44 @@ export const updateProducto = async (req, res, next) => {
       nombre_producto,
       precio_producto,
       exento_iva,
-      categoria_producto,
-      distribuidora_producto,
+      id_categoria,
+      id_envase,
+      capacidad,
+      id_unidad_capacidad,
+      stock,
+      stock_minimo,
+      id_proveedor_preferido,
     } = req.body;
 
     await pool.query(
-      `UPDATE productos
-       SET codigo_producto = ?, nombre_producto = ?, precio_producto = ?, exento_iva = ?, categoria_producto = ?, distribuidora_producto = ?
-       WHERE id = ?`,
+      `
+      UPDATE productos
+      SET 
+        codigo_producto = ?, 
+        nombre_producto = ?, 
+        precio_producto = ?, 
+        exento_iva = ?, 
+        id_categoria = ?, 
+        id_envase = ?, 
+        capacidad = ?, 
+        id_unidad_capacidad = ?,
+        stock = ?,
+        stock_minimo = ?,
+        id_proveedor_preferido = ?
+      WHERE id = ?
+      `,
       [
         codigo_producto,
         nombre_producto,
         precio_producto,
         exento_iva,
-        categoria_producto,
-        distribuidora_producto,
+        id_categoria,
+        id_envase,
+        capacidad,
+        id_unidad_capacidad,
+        stock,
+        stock_minimo,
+        id_proveedor_preferido,
         id,
       ]
     );
@@ -115,7 +218,7 @@ export const updateProducto = async (req, res, next) => {
   }
 };
 
-// Eliminar producto
+// DELETE /productos/:id
 export const deleteProducto = async (req, res, next) => {
   try {
     const { id } = req.params;
