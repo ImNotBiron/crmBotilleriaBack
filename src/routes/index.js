@@ -11,6 +11,7 @@ import unidadesRoutes from "./unidades.routes.js";
 import alertasRoutes from "./alertas.routes.js";
 import historialRoutes from "./historial.routes.js";
 import promocionesRoutes from "./promociones.routes.js";
+import cajaRoutes from "./caja.routes.js";
 
 
 
@@ -27,5 +28,6 @@ router.use("/unidades-medida", unidadesRoutes);
 router.use("/alertas-stock", alertasRoutes);
 router.use("/historial-stock", historialRoutes);
 router.use("/promociones", promocionesRoutes);
+router.use("/caja", cajaRoutes);
 
 export default router;
