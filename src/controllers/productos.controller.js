@@ -2,35 +2,22 @@
 import pool from "../config/db.js";
 
 // GET /productos
-// Lista productos + info de categoría, envase, unidad y proveedor preferido
 export const getAllProductos = async (req, res, next) => {
   try {
     const [rows] = await pool.query(
       `
       SELECT 
-        p.id,
-        p.codigo_producto,
-        p.nombre_producto,
-        p.precio_producto,
-        p.exento_iva,
-        p.created_at,
-        p.id_categoria,
-        c.nombre AS categoria_nombre,
-        p.id_envase,
+        p.*, 
+        -- ALIAS PARA QUE EL FRONTEND LO LEA DIRECTO
+        c.nombre AS categoria_producto,
+        prov.nombre AS distribuidora_producto,
         e.nombre AS envase_nombre,
-        p.capacidad,
-        p.id_unidad_capacidad,
-        um.codigo AS unidad_codigo,
-        um.descripcion AS unidad_descripcion,
-        p.stock,
-        p.stock_minimo,
-        p.id_proveedor_preferido,
-        prov.nombre AS proveedor_preferido_nombre
+        um.codigo AS unidad_codigo
       FROM productos p
       LEFT JOIN categorias c ON p.id_categoria = c.id
+      LEFT JOIN proveedores prov ON p.id_proveedor_preferido = prov.id
       LEFT JOIN envases e ON p.id_envase = e.id
       LEFT JOIN unidades_medida um ON p.id_unidad_capacidad = um.id
-      LEFT JOIN proveedores prov ON p.id_proveedor_preferido = prov.id
       ORDER BY p.id DESC
       `
     );
@@ -48,61 +35,19 @@ export const getProductoByCodigo = async (req, res, next) => {
     const [rows] = await pool.query(
       `
       SELECT 
-        p.id,
-        p.codigo_producto,
-        p.nombre_producto,
-        p.precio_producto,
-        p.exento_iva,
-        p.created_at,
-        p.id_categoria,
-        p.id_envase,
-        p.capacidad,
-        p.id_unidad_capacidad,
-        p.stock,
-        p.stock_minimo,
-        p.id_proveedor_preferido
+        p.*, 
+        c.nombre AS categoria_nombre,
+        e.nombre AS envase_nombre,
+        e.es_retornable,
+        um.codigo AS unidad_codigo
       FROM productos p
+      LEFT JOIN categorias c ON p.id_categoria = c.id
+      LEFT JOIN envases e ON p.id_envase = e.id
+      LEFT JOIN unidades_medida um ON p.id_unidad_capacidad = um.id
       WHERE p.codigo_producto = ?
       LIMIT 1
       `,
       [codigo]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "Producto no encontrado" });
-    }
-
-    res.json(rows[0]);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// GET /productos/:id
-export const getProductoById = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    const [rows] = await pool.query(
-      `
-      SELECT 
-        p.id,
-        p.codigo_producto,
-        p.nombre_producto,
-        p.precio_producto,
-        p.exento_iva,
-        p.created_at,
-        p.id_categoria,
-        p.id_envase,
-        p.capacidad,
-        p.id_unidad_capacidad,
-        p.stock,
-        p.stock_minimo,
-        p.id_proveedor_preferido
-      FROM productos p
-      WHERE p.id = ?
-      `,
-      [id]
     );
 
     if (rows.length === 0) {
@@ -130,6 +75,9 @@ export const createProducto = async (req, res, next) => {
       stock = 0,
       stock_minimo = 0,
       id_proveedor_preferido = null,
+      // ✅ NUEVOS CAMPOS
+      cantidad_mayorista = 0,
+      precio_mayorista = 0
     } = req.body;
 
     await pool.query(
@@ -137,8 +85,9 @@ export const createProducto = async (req, res, next) => {
       INSERT INTO productos 
       (codigo_producto, nombre_producto, precio_producto, exento_iva,
        id_categoria, id_envase, capacidad, id_unidad_capacidad,
-       stock, stock_minimo, id_proveedor_preferido)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       stock, stock_minimo, id_proveedor_preferido, 
+       cantidad_mayorista, precio_mayorista) -- <--- AGREGADOS
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         codigo_producto,
@@ -152,6 +101,8 @@ export const createProducto = async (req, res, next) => {
         stock,
         stock_minimo,
         id_proveedor_preferido,
+        cantidad_mayorista, // <---
+        precio_mayorista    // <---
       ]
     );
 
@@ -177,6 +128,9 @@ export const updateProducto = async (req, res, next) => {
       stock,
       stock_minimo,
       id_proveedor_preferido,
+      // ✅ NUEVOS CAMPOS
+      cantidad_mayorista,
+      precio_mayorista
     } = req.body;
 
     await pool.query(
@@ -193,7 +147,9 @@ export const updateProducto = async (req, res, next) => {
         id_unidad_capacidad = ?,
         stock = ?,
         stock_minimo = ?,
-        id_proveedor_preferido = ?
+        id_proveedor_preferido = ?,
+        cantidad_mayorista = ?,  -- <---
+        precio_mayorista = ?     -- <---
       WHERE id = ?
       `,
       [
@@ -208,6 +164,8 @@ export const updateProducto = async (req, res, next) => {
         stock,
         stock_minimo,
         id_proveedor_preferido,
+        cantidad_mayorista, // <---
+        precio_mayorista,   // <---
         id,
       ]
     );
@@ -222,10 +180,40 @@ export const updateProducto = async (req, res, next) => {
 export const deleteProducto = async (req, res, next) => {
   try {
     const { id } = req.params;
-
     await pool.query("DELETE FROM productos WHERE id = ?", [id]);
-
     res.json({ message: "Producto eliminado" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProductoById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const [rows] = await pool.query(
+      `
+      SELECT 
+        p.*, 
+        c.nombre AS categoria_producto,
+        prov.nombre AS distribuidora_producto,
+        e.nombre AS envase_nombre,
+        um.codigo AS unidad_codigo
+      FROM productos p
+      LEFT JOIN categorias c ON p.id_categoria = c.id
+      LEFT JOIN proveedores prov ON p.id_proveedor_preferido = prov.id
+      LEFT JOIN envases e ON p.id_envase = e.id
+      LEFT JOIN unidades_medida um ON p.id_unidad_capacidad = um.id
+      WHERE p.id = ?
+      `,
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Producto no encontrado" });
+    }
+
+    res.json(rows[0]);
   } catch (error) {
     next(error);
   }

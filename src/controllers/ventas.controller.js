@@ -17,7 +17,9 @@ export const crearVenta = async (req, res, next) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
+    // =================================================================
     // 1) Insertar venta
+    // =================================================================
     const [ventaRes] = await conn.query(
       `
       INSERT INTO ventas (total_general, total_afecto, total_exento, fecha, id_usuario)
@@ -28,7 +30,9 @@ export const crearVenta = async (req, res, next) => {
 
     const idVenta = ventaRes.insertId;
 
+    // =================================================================
     // 2) Insertar pagos
+    // =================================================================
     for (const p of pagos) {
       await conn.query(
         `
@@ -39,7 +43,9 @@ export const crearVenta = async (req, res, next) => {
       );
     }
 
+    // =================================================================
     // 3) Insertar detalles + descontar stock + historial + alertas
+    // =================================================================
     for (const item of items) {
       const {
         id_producto,
@@ -48,7 +54,7 @@ export const crearVenta = async (req, res, next) => {
         exento_iva,
       } = item;
 
-      // detalle
+      // A. Detalle de venta
       await conn.query(
         `
         INSERT INTO ventas_detalles
@@ -58,7 +64,7 @@ export const crearVenta = async (req, res, next) => {
         [idVenta, id_producto, cantidad, precio_unitario, exento_iva]
       );
 
-      // descontar stock
+      // B. Descontar stock
       await conn.query(
         `
         UPDATE productos 
@@ -68,7 +74,7 @@ export const crearVenta = async (req, res, next) => {
         [cantidad, id_producto]
       );
 
-      // obtener stock actual y mínimo
+      // C. Verificar alertas y guardar historial
       const [prodRows] = await conn.query(
         `
         SELECT stock, stock_minimo, nombre_producto
@@ -81,7 +87,7 @@ export const crearVenta = async (req, res, next) => {
       if (prodRows.length) {
         const { stock, stock_minimo, nombre_producto } = prodRows[0];
 
-        // historial_stock
+        // Historial
         await conn.query(
           `
           INSERT INTO historial_stock
@@ -96,7 +102,7 @@ export const crearVenta = async (req, res, next) => {
           ]
         );
 
-        // alerta de stock crítico
+        // Alerta de stock crítico
         if (stock_minimo > 0 && stock <= stock_minimo) {
           const mensaje = `Stock crítico del producto "${nombre_producto}" (ID ${id_producto}). Stock actual: ${stock}, mínimo: ${stock_minimo}.`;
 
@@ -110,6 +116,33 @@ export const crearVenta = async (req, res, next) => {
         }
       }
     }
+
+    // =================================================================
+    // 4) NUEVO: Generar y guardar Voucher
+    // =================================================================
+    
+    // Creamos un JSON con los datos esenciales para reimpresión futura
+    const contenidoVoucher = JSON.stringify({
+       empresa: "Botillería CRM",
+       fecha: new Date(),
+       vendedor_id: id_usuario,
+       items: items.map(i => ({ 
+         id: i.id_producto, 
+         cantidad: i.cantidad, 
+         precio: i.precio_unitario 
+       })),
+       total: total_general,
+       pagos: pagos
+    });
+
+    // Insertamos en la tabla vouchers
+    // Nota: Usamos el idVenta como "folio_voucher" inicial
+    await conn.query(
+      `INSERT INTO vouchers (id_venta, folio_voucher, contenido) VALUES (?, ?, ?)`,
+      [idVenta, idVenta, contenidoVoucher]
+    );
+
+    // =================================================================
 
     await conn.commit();
 
