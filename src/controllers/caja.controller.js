@@ -21,7 +21,7 @@ export const abrirCaja = async (req, res, next) => {
   }
 };
 
-// ✅ 2. OBTENER ESTADO ACTUAL (CON DETALLE DE MOVIMIENTOS)
+// ✅ 2. OBTENER ESTADO ACTUAL (CON HISTORIAL UNIFICADO)
 export const getEstadoCaja = async (req, res, next) => {
   try {
     const [sesion] = await pool.query("SELECT * FROM caja_sesiones WHERE estado = 'abierta' LIMIT 1");
@@ -32,7 +32,7 @@ export const getEstadoCaja = async (req, res, next) => {
 
     const caja = sesion[0];
 
-    // A. Calcular VENTAS
+    // A. Calcular Totales de VENTAS
     const [ventas] = await pool.query(
       `SELECT vp.tipo_pago, COALESCE(SUM(vp.monto), 0) as total
        FROM ventas_pagos vp
@@ -52,28 +52,60 @@ export const getEstadoCaja = async (req, res, next) => {
       }
     });
 
-    // B. Calcular MOVIMIENTOS (Totales y Lista Detallada)
-    // Traemos también el nombre del usuario que hizo el movimiento
+    // B. Calcular MOVIMIENTOS Manuales
     const [movimientos] = await pool.query(
-        `SELECT cm.*, u.nombre_usuario 
-         FROM caja_movimientos cm
-         LEFT JOIN usuarios u ON cm.id_usuario = u.id
-         WHERE cm.id_caja_sesion = ? 
-         ORDER BY cm.fecha DESC`,
+        `SELECT tipo, COALESCE(SUM(monto), 0) as total 
+         FROM caja_movimientos 
+         WHERE id_caja_sesion = ? 
+         GROUP BY tipo`,
         [caja.id]
     );
 
     let totalIngresosExtra = 0;
     let totalEgresos = 0;
 
-    // Recorremos la lista para sumar los totales
     movimientos.forEach(m => {
-        if (m.tipo === 'INGRESO') totalIngresosExtra += Number(m.monto);
-        if (m.tipo === 'EGRESO') totalEgresos += Number(m.monto);
+        if (m.tipo === 'INGRESO') totalIngresosExtra += Number(m.total);
+        if (m.tipo === 'EGRESO') totalEgresos += Number(m.total);
     });
 
-    // C. Calcular TOTAL ESPERADO
+    // C. Calcular Total Esperado
     const totalEsperado = (caja.monto_inicial + totalVentasEfectivo + totalIngresosExtra) - totalEgresos;
+
+    // ✅ D. GENERAR LISTA UNIFICADA (Ventas Efectivo + Movimientos Manuales)
+    // Usamos UNION ALL para juntar ambas tablas en una sola lista cronológica
+    const [listaUnificada] = await pool.query(
+      `
+      -- 1. Movimientos Manuales
+      SELECT 
+        cm.fecha, 
+        cm.tipo, 
+        cm.monto, 
+        cm.comentario, 
+        u.nombre_usuario 
+      FROM caja_movimientos cm
+      LEFT JOIN usuarios u ON cm.id_usuario = u.id
+      WHERE cm.id_caja_sesion = ?
+
+      UNION ALL
+
+      -- 2. Ventas en Efectivo (Se muestran como 'VENTA')
+      SELECT 
+        v.fecha, 
+        'VENTA' as tipo, 
+        vp.monto, 
+        CONCAT('Venta #', v.id) as comentario, 
+        u.nombre_usuario
+      FROM ventas v
+      JOIN ventas_pagos vp ON v.id = vp.id_venta
+      LEFT JOIN usuarios u ON v.id_usuario = u.id
+      WHERE v.fecha >= ? AND (vp.tipo_pago = 'EFECTIVO' OR vp.tipo_pago = 'GIRO')
+
+      ORDER BY fecha DESC
+      LIMIT 50 -- Opcional: Limitar para no saturar si hay muchas ventas
+      `,
+      [caja.id, caja.fecha_apertura]
+    );
 
     res.json({
       estado: "abierta",
@@ -86,8 +118,7 @@ export const getEstadoCaja = async (req, res, next) => {
         ingresos_extra: totalIngresosExtra,
         egresos: totalEgresos,
         total_esperado_cajon: totalEsperado,
-        // ✅ Enviamos la lista al frontend
-        lista_movimientos: movimientos 
+        lista_movimientos: listaUnificada // Ahora incluye ventas
       }
     });
 

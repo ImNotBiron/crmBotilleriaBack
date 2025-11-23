@@ -1,10 +1,10 @@
-// src/controllers/auth.controller.js
 import pool from "../config/db.js";
 import jwt from "jsonwebtoken";
 import { limpiarRutFormato } from "../utils/rut.js";
 
 export const login = async (req, res, next) => {
   try {
+    // ✅ MODIFICADO: Solo pedimos RUT (sin password)
     const { rut } = req.body;
 
     if (!rut) {
@@ -13,6 +13,7 @@ export const login = async (req, res, next) => {
 
     const rutLimpio = limpiarRutFormato(rut);
 
+    // Buscamos usuario por RUT
     const [rows] = await pool.query(
       `
       SELECT 
@@ -38,6 +39,11 @@ export const login = async (req, res, next) => {
       return res.status(403).json({ message: "Usuario desactivado." });
     }
 
+    // ⚠️ SIN BCRYPT: Login directo si el RUT existe
+
+    // ✅ MANTENIDO: Actualizar estado "En Línea" para el Dashboard
+    await pool.query("UPDATE usuarios SET en_linea = 1 WHERE id = ?", [user.id]);
+
     const payload = {
       id: user.id,
       rut: user.rut_usuario,
@@ -47,7 +53,7 @@ export const login = async (req, res, next) => {
     const token = jwt.sign(
       payload,
       process.env.JWT_SECRET || "secret123",
-      { expiresIn: "2h" }
+      { expiresIn: "12h" }
     );
 
     res.json({
@@ -59,9 +65,22 @@ export const login = async (req, res, next) => {
         rut_usuario: user.rut_usuario,
         tipo_usuario: user.tipo_usuario,
         activo: user.activo,
+        en_linea: 1
       },
     });
   } catch (error) {
     next(error);
   }
+};
+
+// ✅ MANTENIDO: Logout para desconectar al usuario del Dashboard
+export const logout = async (req, res, next) => {
+    try {
+        if (req.user && req.user.id) {
+            await pool.query("UPDATE usuarios SET en_linea = 0 WHERE id = ?", [req.user.id]);
+        }
+        res.json({ message: "Sesión cerrada correctamente." });
+    } catch (error) {
+        next(error);
+    }
 };
